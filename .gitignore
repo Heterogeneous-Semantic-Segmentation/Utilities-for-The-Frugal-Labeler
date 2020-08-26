@@ -2,6 +2,8 @@ data/
 # gitignore template for Jupyter Notebooks
 # website: http://jupyter.org/
 
+.idea/
+
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 
