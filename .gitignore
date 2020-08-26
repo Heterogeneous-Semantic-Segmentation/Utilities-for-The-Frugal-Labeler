@@ -9,6 +9,8 @@ data/
 profile_default/
 ipython_config.py
 
+.ipynb_checkpoints/
+
 # Remove previous ipynb_checkpoints
 #   git rm -r .ipynb_checkpoints/
 # Byte-compiled / optimized / DLL files
