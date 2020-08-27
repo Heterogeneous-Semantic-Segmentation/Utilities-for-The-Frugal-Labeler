@@ -3,6 +3,7 @@ data/
 # website: http://jupyter.org/
 
 .idea/
+weights_bulbus/
 
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
