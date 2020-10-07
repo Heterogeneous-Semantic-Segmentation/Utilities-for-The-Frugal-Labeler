@@ -2,6 +2,11 @@ from tensorflow.keras.models import *
 from tensorflow.keras.layers import *
 from tensorflow.keras.optimizers import *
 import tensorflow.keras.backend as K
+# in jupyter run:
+# %env SM_FRAMEWORK=tf.keras
+# before calling segmentation_models
+import segmentation_models as sm
+import numpy as np
 
 def dice_coef(y_true, y_pred):
     y_true_f = K.flatten(y_true)
@@ -10,12 +15,7 @@ def dice_coef(y_true, y_pred):
     coef = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
     return coef
 
-
-def dice_coef_loss(y_true, y_pred):
-    return 1-dice_coef(y_true, y_pred)
-
-
-def unet(pretrained_weights = None,input_size = (256,256,1)):
+def unet(pretrained_weights = None,input_size = (256,256,1),output_filters=1):
     inputs = Input(input_size)
     conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(inputs)
     conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv1)
@@ -55,14 +55,22 @@ def unet(pretrained_weights = None,input_size = (256,256,1)):
     merge9 = concatenate([conv1,up9], axis = 3)
     conv9 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(merge9)
     conv9 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv9)
-    conv9 = Conv2D(2, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv9)
-    conv10 = Conv2D(1, 1, activation = 'sigmoid')(conv9)
 
-    model = Model(inputs = inputs, outputs = conv10)
+    # if we have a single class (output_filters=1) we want to output the value of a sigmoid. If we have more than one
+    # class we need a softmax.
+    if output_filters == 1:
+        conv9 = Conv2D(2, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv9)
+        output = Conv2D(1, 1, activation = 'sigmoid')(conv9)
+    else:
+        output = Conv2D(filters=output_filters, kernel_size=(1, 1))(conv9)
+        output = BatchNormalization()(output)
+        output = Activation('softmax')(output)
 
-    model.compile(optimizer = Adam(lr = 1e-5), loss = dice_coef_loss, metrics = [dice_coef, 'accuracy'])
+    loss = sm.losses.DiceLoss(class_weights=np.ones(output_filters))
+    model = Model(inputs = inputs, outputs = output)
+    model.compile(optimizer = Adam(lr = 0.001), loss = loss , metrics = [dice_coef, 'accuracy'])
 
-    if(pretrained_weights):
+    if pretrained_weights:
         model.load_weights(pretrained_weights)
 
     return model
