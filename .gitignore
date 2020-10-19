@@ -2,6 +2,9 @@ data/
 # gitignore template for Jupyter Notebooks
 # website: http://jupyter.org/
 
+
+.DS_Store
+
 .idea/
 weights_bulbus/
 
