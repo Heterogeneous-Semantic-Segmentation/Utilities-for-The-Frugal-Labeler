@@ -5,8 +5,10 @@ import os
 import glob
 import skimage.io as io
 import skimage.transform as trans
-from pymodules.create_one_hot_encoded_map_from_mask import get_one_hot_map
+from create_one_hot_encoded_map_from_mask import get_one_hot_map
 import tensorflow as tf
+import matplotlib.pyplot as plt
+from heterogeneous_mask_iterator import HeteregenousMaskIterator
 
 
 def adjustImage(img):
@@ -21,7 +23,7 @@ def adjustMask(mask, color_map, flag_multi_class):
         for i in range(len(mask)):
             one_hot_mask.append(get_one_hot_map(mask[i],color_map))
         one_hot_mask = tf.stack(one_hot_mask)
-        return one_hot_mask / 255.
+        return one_hot_mask
     else:
         # Requires the input image to only contain two colors, otherwise this will not work.
         mask = mask / 255.
@@ -61,9 +63,32 @@ def trainGenerator(batch_size,train_path,image_folder,mask_folder,aug_dict,image
         save_to_dir = save_to_dir,
         save_prefix  = mask_save_prefix,
         seed = seed)
-    train_generator = zip(image_generator, mask_generator)
-    for (img,mask) in train_generator:
-        yield (adjustImage(img), adjustMask(mask,color_map,flag_multi_class))
+
+    hetergenous_mask_generator = HeteregenousMaskIterator(train_path,
+                                                          mask_datagen,
+                                                          masks= ['ventral_mask_atrium', 'ventral_mask_bulbus', 'ventral_mask_heart'],
+                                                          color_map=color_map,
+                                                          color_mode = mask_color_mode,
+                                                          target_size = target_size,
+                                                          batch_size = batch_size,
+                                                          save_to_dir = save_to_dir,
+                                                          save_prefix  = mask_save_prefix,
+                                                          seed = seed)
+
+    train_generator = zip(image_generator, mask_generator,hetergenous_mask_generator)
+    for (img,mask,test) in train_generator:
+
+        plt.imshow(img[0])
+        plt.show()
+
+        plt.imshow(mask[0])
+        plt.show()
+        plt.imshow(test[0])
+        plt.show()
+
+        adjusted_img = adjustImage(img)
+        adjusted_mask = adjustMask(mask,color_map,flag_multi_class)
+        yield (adjusted_img, adjusted_mask)
 
 
 def testGenerator(test_path,num_image = 30,target_size = (256,256),flag_multi_class = False,as_gray = True):
