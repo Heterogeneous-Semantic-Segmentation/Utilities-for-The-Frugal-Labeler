@@ -5,6 +5,7 @@ from keras_preprocessing.image.utils import (array_to_img,
                                              img_to_array,
                                              load_img)
 
+DELETED_MASK_IDENTIFIER = -1
 
 def check_equal(iterator):
     iterator = iter(iterator)
@@ -23,6 +24,8 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                  target_size=(256, 256),
                  color_mode='rgb',
                  masks=None,
+                 heterogeneously_labeled_masks=None,
+                 missing_labels_ratio=0,
                  batch_size=32,
                  shuffle=True,
                  seed=None,
@@ -44,12 +47,17 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                                                                     subset,
                                                                     interpolation)
         self.background_color = background_color
+        self.heterogeneously_labeled_masks = heterogeneously_labeled_masks
+        self.missing_labels_ratio = missing_labels_ratio
         self.directory = directory
         self.dtype = dtype
         self.target_size = target_size
         # First, count the number of samples and classes.
         self.num_classes = len(masks)
         self.class_indices = dict(zip(masks, range(len(masks))))
+        self.heterogeneous_masks = []
+        for mask in heterogeneously_labeled_masks:
+            self.heterogeneous_masks.append(self.class_indices.get(mask))
         results = []
         self.filenames = []
         # Check if all mask directories contain the same account of mask images
@@ -62,6 +70,8 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
         self._mask_classes = masks
         super(HeterogeneousMaskIterator, self).__init__(self.samples, batch_size, shuffle, seed)
         print('Found %d masks containing %d classes.' % (self.samples, len(masks)))
+        if (not self.heterogeneously_labeled_masks is None) and (not self.missing_labels_ratio is None):
+            print('Removing %d%% of masks of the following class(es): %s'%((self.missing_labels_ratio*100),self.heterogeneously_labeled_masks))
 
     @property
     def filepaths(self):
@@ -91,6 +101,14 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                 else:
                     mask[i, j] = np.eye(self.num_classes, dtype=int)[class_index].tolist()
         return mask
+
+    def remove_masks(self,batch_x):
+        if self.seed is not None:
+            np.random.seed(self.seed + self.total_batches_seen)
+        for index in self.heterogeneous_masks:
+            masked_batch_x = batch_x[:, :, :, index]
+            delete_mask = np.where(np.random.sample(len(masked_batch_x)) <= self.missing_labels_ratio)
+            masked_batch_x[delete_mask] = DELETED_MASK_IDENTIFIER
 
     def _get_batches_of_transformed_samples(self, index_array):
         """Gets a batch of transformed samples.
@@ -142,4 +160,5 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                     hash=np.random.randint(1e7),
                     format=self.save_format)
                 img.save(os.path.join(self.save_to_dir, fname))
+        self.remove_masks(batch_x)
         return batch_x

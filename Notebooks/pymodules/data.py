@@ -6,6 +6,7 @@ import glob
 import skimage.io as io
 import skimage.transform as trans
 from heterogeneous_mask_iterator import HeterogeneousMaskIterator
+import segmentation_models as sm
 
 
 def adjust_image(img):
@@ -19,6 +20,8 @@ def train_generator(batch_size,
                     image_folder,
                     mask_folders,
                     aug_dict,
+                    heterogeneously_labeled_masks=None,
+                    missing_labels_ratio=0,
                     image_color_mode="rgb",
                     mask_color_mode="rgb",
                     image_save_prefix="image",
@@ -45,6 +48,8 @@ def train_generator(batch_size,
     heterogeneous_mask_generator = HeterogeneousMaskIterator(directory=train_path,
                                                            image_data_generator=mask_datagen,
                                                            masks=mask_folders,
+                                                           heterogeneously_labeled_masks=heterogeneously_labeled_masks,
+                                                           missing_labels_ratio=missing_labels_ratio,
                                                            color_mode=mask_color_mode,
                                                            target_size=target_size,
                                                            batch_size=batch_size,
