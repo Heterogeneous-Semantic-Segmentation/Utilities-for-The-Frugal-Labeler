@@ -2,14 +2,20 @@ from tensorflow.python.keras import backend as K
 import tensorflow as tf
 
 
+# both loss functions expect unlabeled masks to be labeled as '-1' in all points of the mask.
+
 smooth = 1.
 
 def adaptive_dice_loss(y_true, y_pred):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
+    # get boolean mask for valid classes ( all points which are not labeled as -1)
     valid_classes_mask = tf.not_equal(y_true_f, -1)
+    # mask both y_true and y_pred to only contain labeled values
     y_true_masked = tf.boolean_mask(y_true_f, valid_classes_mask)
     y_pred_masked = tf.boolean_mask(y_pred_f, valid_classes_mask)
+    # calculate the dice loss only with the labeled values
+    # normalization is included 'implicitly' since we masked out the unlabeled values.
     intersection = K.sum(y_true_masked * y_pred_masked)
     coef = (2. * intersection + smooth) / (K.sum(y_true_masked) + K.sum(y_pred_masked) + smooth)
     return 1 - coef
@@ -17,7 +23,7 @@ def adaptive_dice_loss(y_true, y_pred):
 def ca_loss(y_true, y_pred):
     # find maximum value along last axis -> we get ones where a true mask exists.
     # if no true mask exists the only values are 0 and -1
-    # after that take the maximum to convert all -1's to 0's -> we get a map for every class where a true mask exists
+    # after that take the maximum to convert all -1's to 0's -> we get a map for every sample where a true mask exists
     available_true_values = tf.math.maximum(tf.reduce_max(y_true, axis=[3]), 0)
     # repeat the mask availability values three times to regain right shape (to be compatible for calculations with y_pred)
     available_true_values = tf.repeat(tf.reshape(available_true_values, y_true.get_shape()[:3] + [1]), 3, axis=3)
