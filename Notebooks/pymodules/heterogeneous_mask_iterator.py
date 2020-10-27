@@ -4,6 +4,7 @@ from keras_preprocessing.image.iterator import Iterator, BatchFromFilesMixin
 from keras_preprocessing.image.utils import (array_to_img,
                                              img_to_array,
                                              load_img)
+import tensorflow as tf
 
 DELETED_MASK_IDENTIFIER = -1
 
@@ -86,21 +87,15 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
         # no sample weights will be returned
         return None
 
-    def get_one_hot_map(self, mask, class_index, background=None):
+    def get_one_hot_map(self,mask,class_index,background=None):
         if background is None:
             background = [0, 0, 0]
-        mask = mask.copy()
-        mask_width = mask.shape[1]
-        mask_height = mask.shape[0]
-        one_hot_map = np.zeros((mask_height, mask_width, self.num_classes))
-        for i in range(mask_height):
-            for j in range(mask_width):
-                mask_val = mask[i, j, :].tolist()
-                if mask_val == background:
-                    mask[i, j] = np.zeros(self.num_classes, dtype=int).tolist()
-                else:
-                    mask[i, j] = np.eye(self.num_classes, dtype=int)[class_index].tolist()
-        return mask
+        reduced_mask = tf.reduce_all(tf.equal(mask, background), axis=-1)
+        class_indices_mask = tf.where(reduced_mask, self.num_classes + 1, class_index)
+        return tf.one_hot(class_indices_mask, self.num_classes)
+
+
+
 
     def remove_masks(self,batch_x):
         if self.seed is not None:
@@ -109,6 +104,7 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
             masked_batch_x = batch_x[:, :, :, index]
             delete_mask = np.where(np.random.sample(len(masked_batch_x)) <= self.missing_labels_ratio)
             masked_batch_x[delete_mask] = DELETED_MASK_IDENTIFIER
+
 
     def _get_batches_of_transformed_samples(self, index_array):
         """Gets a batch of transformed samples.
@@ -146,6 +142,7 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                     x = self.image_data_generator.standardize(x)
                 one_hot_map += self.get_one_hot_map(x, k,self.background_color)
             # If one_hot_map has a max value >1 whe have overlapping classes -> prohibited
+            one_hot_map = one_hot_map.numpy()
             if one_hot_map.max() > 1:
                 raise ValueError('Mask mismatch: classes are not mutually exclusive (multiple class definitions for '
                                  'one pixel).')
