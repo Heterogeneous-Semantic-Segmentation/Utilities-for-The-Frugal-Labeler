@@ -1,12 +1,12 @@
 from tensorflow.python.keras import backend as K
 import tensorflow as tf
 
-
 # both loss functions expect unlabeled masks to be labeled as '-1' in all points of the mask.
 
-smooth = 1.
+smooth = 1e-5
 
-def adaptive_dice_loss(y_true, y_pred):
+
+def dice_loss_single_channel(y_true, y_pred):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     # get boolean mask for valid classes ( all points which are not labeled as -1)
@@ -17,10 +17,45 @@ def adaptive_dice_loss(y_true, y_pred):
     # calculate the dice loss only with the labeled values
     # normalization is included 'implicitly' since we masked out the unlabeled values.
     intersection = K.sum(y_true_masked * y_pred_masked)
-    coef = (2. * intersection + smooth) / (K.sum(y_true_masked) + K.sum(y_pred_masked) + smooth)
-    return 1 - coef
+    if intersection == 0:
+        return -1.
+    else:
+        coef = (2. * intersection + smooth) / (K.sum(y_true_masked) + K.sum(y_pred_masked) + smooth)
+        return 1 - coef
 
+
+def dice_loss_single_sample(y_true, y_pred):
+    y_true_swapped = tf.einsum("i...j->j...i", y_true)
+    y_pred_swapped = tf.einsum("i...j->j...i", y_pred)
+    elems = (y_true_swapped, y_pred_swapped)
+    alternate = tf.map_fn(lambda x: dice_loss_single_channel(x[0], x[1]), elems, dtype=tf.float32)
+    alterend_filtered_invalid_values = alternate[alternate >= 0]
+    if tf.size(alterend_filtered_invalid_values) == 0:
+        # if there are no true values return -1 which is a invalid value (later filtered out). possible value
+        # lazy solution, a better solution might be to remember the last valid value to not distort the
+        # learning process.
+        return -1.
+    return tf.math.reduce_mean(alterend_filtered_invalid_values)
+
+
+def adaptive_dice_loss(y_true, y_pred):
+    elems = (y_true, y_pred)
+    alternate = tf.map_fn(lambda x: dice_loss_single_sample(x[0], x[1]), elems, dtype=tf.float32)
+    alterend_filtered_invalid_values = alternate[alternate >= 0]
+    if tf.size(alterend_filtered_invalid_values) == 0:
+        # If we do not have any true values, assume worst possible value (very lazy solution).
+        return tf.constant(1.)
+    return tf.math.reduce_mean(alterend_filtered_invalid_values)
+
+
+# def ca_loss(background_class_index):
 def ca_loss(y_true, y_pred):
+    background_class_index = 3
+    # remove background class
+    y_true = tf.concat([y_true[:, :, :, :background_class_index], y_true[:, :, :, background_class_index + 1:]],
+                       axis=-1)
+    y_pred = tf.concat([y_pred[:, :, :, :background_class_index], y_pred[:, :, :, background_class_index + 1:]],
+                       axis=-1)
     # find maximum value along last axis -> we get ones where a true mask exists.
     # if no true mask exists the only values are 0 and -1
     # after that take the maximum to convert all -1's to 0's -> we get a map for every sample where a true mask exists
@@ -34,10 +69,16 @@ def ca_loss(y_true, y_pred):
     # so we know that if the product is -1 we have the searched indices:
     #           - The true value is given (available_true_values = 1) and
     #           - The value does not have a ground truth label (y_true = -1)
-    indices = tf.where(tf.math.equal(tf.math.reduce_prod(stacked, axis=0),-1))
+    indices = tf.where(tf.math.equal(tf.math.reduce_prod(stacked, axis=0), -1))
     # collect all values of the candidate indices in y_pred
-    candidates_y_pred = tf.gather(K.flatten(y_pred),indices)
+    candidates_y_pred = tf.gather(K.flatten(y_pred), indices)
     # return the average value for all values in the batch
     # the exponential function minus 1 is applied to get values in the range [0,(e-1)] where e is the eulers number ~1.7
     # returns 0 if there are no candidates (so if all classes are given in the batch
-    return tf.math.divide_no_nan(K.sum((tf.exp(candidates_y_pred)-1)), len(candidates_y_pred))
+    return tf.math.divide_no_nan(K.sum((tf.exp(candidates_y_pred) - 1)), len(candidates_y_pred))
+    # return loss
+
+
+def combined_loss(y_true, y_pred):
+    alpha = 0.5
+    return tf.multiply(alpha, adaptive_dice_loss(y_true, y_pred)) + tf.multiply(alpha, ca_loss(y_true, y_pred))
