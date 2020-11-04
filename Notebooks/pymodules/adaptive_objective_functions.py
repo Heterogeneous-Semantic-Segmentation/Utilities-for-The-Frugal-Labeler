@@ -28,24 +28,24 @@ def dice_loss_single_sample(y_true, y_pred):
     y_true_swapped = tf.einsum("i...j->j...i", y_true)
     y_pred_swapped = tf.einsum("i...j->j...i", y_pred)
     elems = (y_true_swapped, y_pred_swapped)
-    alternate = tf.map_fn(lambda x: dice_loss_single_channel(x[0], x[1]), elems, dtype=tf.float32)
-    alterend_filtered_invalid_values = alternate[alternate >= 0]
-    if tf.size(alterend_filtered_invalid_values) == 0:
+    preds = tf.map_fn(lambda x: dice_loss_single_channel(x[0], x[1]), elems, dtype=tf.float32)
+    preds_filtered_invalid_values = preds[preds >= 0]
+    if tf.size(preds_filtered_invalid_values) == 0:
         # if there are no true values return -1 which is a invalid value (later filtered out). possible value
         # lazy solution, a better solution might be to remember the last valid value to not distort the
         # learning process.
         return -1.
-    return tf.math.reduce_mean(alterend_filtered_invalid_values)
+    return tf.math.reduce_mean(preds_filtered_invalid_values)
 
 
 def adaptive_dice_loss(y_true, y_pred):
     elems = (y_true, y_pred)
-    alternate = tf.map_fn(lambda x: dice_loss_single_sample(x[0], x[1]), elems, dtype=tf.float32)
-    alterend_filtered_invalid_values = alternate[alternate >= 0]
-    if tf.size(alterend_filtered_invalid_values) == 0:
+    preds = tf.map_fn(lambda x: dice_loss_single_sample(x[0], x[1]), elems, dtype=tf.float32)
+    preds_filtered_invalid_values = preds[preds >= 0]
+    if tf.size(preds_filtered_invalid_values) == 0:
         # If we do not have any true values, assume worst possible value (very lazy solution).
         return tf.constant(1.)
-    return tf.math.reduce_mean(alterend_filtered_invalid_values)
+    return tf.math.reduce_mean(preds_filtered_invalid_values)
 
 
 # def ca_loss(background_class_index):
