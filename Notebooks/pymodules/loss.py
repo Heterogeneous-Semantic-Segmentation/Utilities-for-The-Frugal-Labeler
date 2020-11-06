@@ -4,16 +4,74 @@ from tensorflow.python.keras import backend as K
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import os
+from unet_model import unet
 from data import train_generator
+from adaptive_objective_functions import adaptive_dice_loss,ca_loss,combined_loss
 import segmentation_models as sm
 import numpy as np
+from create_one_hot_encoded_map_from_mask import get_one_hot_map
 
 from heterogeneous_mask_iterator import DELETED_MASK_IDENTIFIER
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
+import numpy as np
+import os
+from PIL import Image
+
+# color map is different on test data
+col_map = [[255,255,255],[20,20,20],[19,19,19],[0,0,0]]
+
+
+
+X_test = []
+for filepath in os.listdir('../../data/test_images/ventral_samples_R0004'):
+    image = Image.open('../../data/test_images/ventral_samples_R0004/'+filepath)
+    image = image.resize((256, 256))
+    # convert image to numpy array
+    data = np.asarray(image)
+    data = data/255.
+    X_test.append(data)
+X_test = np.array(X_test)
+Y_test = []
+for filepath in os.listdir('../../data/test_images/ventral_mask_combined_R0004'):
+    image = Image.open('../../data/test_images/ventral_mask_combined_R0004/'+filepath)
+    image = image.resize((256, 256))
+    Y_test.append(get_one_hot_map(np.asarray(image),col_map))
+Y_test = tf.stack(Y_test)
+
+
+
+model = unet(combined_loss,input_size = (256,256,3),output_filters=4)
+
+import time
+
+pred = K.variable(model.predict(X_test[0].reshape(1,256,256,3)))
+true = K.variable(Y_test[0]).numpy().reshape(1,256,256,4)
+true = tf.repeat(true,2,axis=0)
+pred = tf.repeat(pred,2,axis=0)
+
+true = true.numpy()
+#true[0,:,:,:] = -1
+#true[1,:,:,0] = -1
+#true[1,:,:,1] = -1
+#true[1,:,:,2] = -1
+#true[1,:,:,3] = -1
+true = K.variable(true)
+
+
+start = time.time()
+adapt = K.eval(adaptive_dice_loss(true[:,:5,:5,:], pred[:,:5,:5,:]))
+end_adapt = time.time()-start
+
+ca_loss(true[:,:5,:5,:], pred[:,:5,:5,:])
+
+print(K.eval(combined_loss(true,pred)))
+
+exit()
+
 # prep
-batch_size = 11
+batch_size = 1
 epochs = 400
 iterations_per_epoch = 300
 
@@ -36,34 +94,12 @@ train_generator = train_generator(batch_size=batch_size,
                                   image_color_mode='rgb',
                                   target_size=(256, 256))
 
-# prep end
-
-import time
-
-
-def adaptive_ca_loss(y_true, y_pred):
-    # find maximum value along last axis -> we get ones where a true mask exists.
-    # if no true mask exists the only values are 0 and -1
-    # after that take the maximum to convert all -1's to 0s -> we get a map for every class where a true mask exists
-    available_true_values = tf.math.maximum(tf.reduce_max(y_true, axis=[3]), 0)
-    # repeat the mask availability values three times to regain right shape (to be compatible for calculations with y_pred)
-    available_true_values = tf.repeat(tf.reshape(available_true_values, y_true.get_shape()[:3] + [1]), 3, axis=3)
-    # stack the true calculated aviable true values and y_true flattened on top of each other
-    stacked = tf.stack([K.flatten(available_true_values), K.flatten(y_true)])
-    # y_true possible values : [-1, 0, 1] ; available_true_values possible values : [0, 1]
-    # if we take the product along axis 0 only the combination [1,-1] will yield '-1'
-    # so we know that if the product is -1 we have the searched indices:
-    # - The true value is given (available_true_values = 1) and
-    # - The value does not have a ground truth label (y_true = -1)
-    indices = tf.where(tf.math.equal(tf.math.reduce_prod(stacked, axis=0),-1))
-    print()
-    pass
 
 
 a = None
 for a in train_generator:
     # samples = np.add(a[1],np.random.normal(0,.1,a[1].shape))
-    F = adaptive_ca_loss(K.variable(a[1]), K.variable(a[1]))
+    F = adaptive_dice_loss(K.variable(a[1]), K.variable(a[1]))
     print(K.eval(F))
     # print('dice loss: %f'%(time.time()-start))
     start = time.time()

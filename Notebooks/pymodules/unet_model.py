@@ -15,7 +15,7 @@ def dice_coef(y_true, y_pred):
     coef = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
     return coef
 
-def unet(pretrained_weights = None,input_size = (256,256,1),output_filters=1):
+def unet(loss,pretrained_weights = None,input_size = (256,256,1),output_filters=1):
     inputs = Input(input_size)
     conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(inputs)
     conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv1)
@@ -66,9 +66,8 @@ def unet(pretrained_weights = None,input_size = (256,256,1),output_filters=1):
         output = BatchNormalization()(output)
         output = Activation('softmax')(output)
 
-    loss = sm.losses.DiceLoss(class_weights=np.ones(output_filters))
     model = Model(inputs = inputs, outputs = output)
-    model.compile(optimizer = Adam(lr = 0.001), loss = loss , metrics = [dice_coef, 'accuracy'])
+    model.compile(optimizer = Adam(), loss = loss , metrics = ['accuracy'])
 
     if pretrained_weights:
         model.load_weights(pretrained_weights)

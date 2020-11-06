@@ -37,7 +37,8 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                  subset=None,
                  interpolation='nearest',
                  dtype='float32',
-                 background_color=None):
+                 background_color=None,
+                 include_background=True):
         super(HeterogeneousMaskIterator, self).set_processing_attrs(image_data_generator,
                                                                     target_size,
                                                                     color_mode,
@@ -47,6 +48,7 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
                                                                     save_format,
                                                                     subset,
                                                                     interpolation)
+        self.include_background = include_background
         self.background_color = background_color
         self.heterogeneously_labeled_masks = heterogeneously_labeled_masks
         self.missing_labels_ratio = missing_labels_ratio
@@ -92,7 +94,7 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
             background = [0, 0, 0]
         reduced_mask = tf.reduce_all(tf.equal(mask, background), axis=-1)
         class_indices_mask = tf.where(reduced_mask, self.num_classes + 1, class_index)
-        return tf.one_hot(class_indices_mask, self.num_classes)
+        return tf.one_hot(class_indices_mask, self.num_classes + 1)
 
 
 
@@ -115,13 +117,13 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
         # Returns
             A batch of transformed samples in one-hot-encoded format.
         """
-        batch_x = np.zeros((len(index_array),) + (self.target_size[0], self.target_size[1], self.num_classes),
+        batch_x = np.zeros((len(index_array),) + (self.target_size[0], self.target_size[1], self.num_classes + 1),
                            dtype=self.dtype)
         # build batch of image data
         # self.filepaths is dynamic, is better to call it once outside the loop
         filepaths = self.filepaths
         for i, j in enumerate(index_array):
-            one_hot_map = np.zeros((self.target_size[0], self.target_size[1], self.num_classes), dtype=np.float32)
+            one_hot_map = np.zeros((self.target_size[0], self.target_size[1], self.num_classes + 1), dtype=np.float32)
             # Iterate over all classes
             params = None
             for k in range(self.num_classes):
@@ -146,6 +148,10 @@ class HeterogeneousMaskIterator(BatchFromFilesMixin, Iterator):
             if one_hot_map.max() > 1:
                 raise ValueError('Mask mismatch: classes are not mutually exclusive (multiple class definitions for '
                                  'one pixel).')
+
+            if self.include_background:
+                # Background class is everywhere, where the one-hot encoding has only zeros
+                one_hot_map = tf.where(one_hot_map == tf.zeros(self.num_classes+1), tf.one_hot(tf.constant(3, shape=one_hot_map.shape[:2]), 4), one_hot_map)
             batch_x[i] = one_hot_map
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
