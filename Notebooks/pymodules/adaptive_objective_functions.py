@@ -48,9 +48,7 @@ def adaptive_dice_loss(y_true, y_pred):
     return tf.math.reduce_mean(preds_filtered_invalid_values)
 
 
-# def ca_loss(background_class_index):
-def ca_loss(y_true, y_pred):
-    background_class_index = 3
+def ca_loss(y_true, y_pred, background_class_index):
     # remove background class
     y_true = tf.concat([y_true[:, :, :, :background_class_index], y_true[:, :, :, background_class_index + 1:]],
                        axis=-1)
@@ -61,7 +59,8 @@ def ca_loss(y_true, y_pred):
     # after that take the maximum to convert all -1's to 0's -> we get a map for every sample where a true mask exists
     available_true_values = tf.math.maximum(tf.reduce_max(y_true, axis=[3]), 0)
     # repeat the mask availability values three times to regain right shape (to be compatible for calculations with y_pred)
-    available_true_values = tf.repeat(tf.reshape(available_true_values, y_true.get_shape()[:3] + [1]), 3, axis=3)
+    available_true_values = tf.repeat(tf.reshape(available_true_values, tf.concat([tf.shape(y_true)[:3], [1]], axis=0)),
+                                      3, axis=3)
     # stack the true calculated available true values and y_true flattened on top of each other
     stacked = tf.stack([K.flatten(available_true_values), K.flatten(y_true)])
     # y_true possible values : [-1, 0, 1] ; available_true_values possible values : [0, 1]
@@ -73,12 +72,17 @@ def ca_loss(y_true, y_pred):
     # collect all values of the candidate indices in y_pred
     candidates_y_pred = tf.gather(K.flatten(y_pred), indices)
     # return the average value for all values in the batch
-    # the exponential function minus 1 is applied to get values in the range [0,(e-1)] where e is the eulers number ~1.7
-    # returns 0 if there are no candidates (so if all classes are given in the batch
-    return tf.math.divide_no_nan(K.sum((tf.exp(candidates_y_pred) - 1)), len(candidates_y_pred))
-    # return loss
+    return tf.math.divide_no_nan(tf.reduce_sum(candidates_y_pred),
+                                 tf.cast(tf.size(candidates_y_pred), dtype=tf.float32))
 
 
-def combined_loss(y_true, y_pred):
-    alpha = 0.5
-    return tf.multiply(alpha, adaptive_dice_loss(y_true, y_pred)) + tf.multiply(alpha, ca_loss(y_true, y_pred))
+def combined_loss(background_class_index, alpha):
+    def loss(y_true, y_pred):
+        ca = ca_loss(y_true, y_pred, background_class_index)
+        dice = adaptive_dice_loss(y_true, y_pred)
+        if ca == 0:
+            return dice
+        else:
+            return tf.multiply(1 - alpha, dice) + tf.multiply(alpha, ca)
+
+    return loss
