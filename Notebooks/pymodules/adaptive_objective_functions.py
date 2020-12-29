@@ -24,7 +24,11 @@ def dice_loss_single_channel(y_true, y_pred):
         return 1 - coef
 
 
+wrong = K.variable([-1, -1, -1,-1,-1,-1,-1,-1])
+
 def dice_loss_single_sample(y_true, y_pred):
+    if tf.reduce_any(tf.reduce_all(tf.math.equal(y_true[0, 0, :], tf.fill([tf.size(y_true[0, 0, :])], -1.)), axis=0)):
+        return tf.constant(-1.)
     y_true_swapped = tf.einsum("i...j->j...i", y_true)
     y_pred_swapped = tf.einsum("i...j->j...i", y_pred)
     elems = (y_true_swapped, y_pred_swapped)
@@ -44,23 +48,24 @@ def adaptive_dice_loss(y_true, y_pred):
     preds_filtered_invalid_values = preds[preds >= 0]
     if tf.size(preds_filtered_invalid_values) == 0:
         # If we do not have any true values, assume worst possible value (very lazy solution).
-        return tf.constant(1.)
+        return tf.constant(0.)
     return tf.math.reduce_mean(preds_filtered_invalid_values)
 
 
 def ca_loss(y_true, y_pred, background_class_index):
-    # remove background class
-    y_true = tf.concat([y_true[:, :, :, :background_class_index], y_true[:, :, :, background_class_index + 1:]],
-                       axis=-1)
-    y_pred = tf.concat([y_pred[:, :, :, :background_class_index], y_pred[:, :, :, background_class_index + 1:]],
-                       axis=-1)
+    if tf.size(tf.where(tf.equal(y_true,-1))) == 0:
+        return 0. # no unkown classes
+    if background_class_index is not None:
+        y_true = tf.concat([y_true[:, :, :, :background_class_index],
+                            tf.fill(tf.shape(y_true[:, :, :, background_class_index:background_class_index + 1]), -1.),
+                            y_true[:, :, :, background_class_index + 1:]], axis=-1)
     # find maximum value along last axis -> we get ones where a true mask exists.
     # if no true mask exists the only values are 0 and -1
     # after that take the maximum to convert all -1's to 0's -> we get a map for every sample where a true mask exists
     available_true_values = tf.math.maximum(tf.reduce_max(y_true, axis=[3]), 0)
     # repeat the mask availability values three times to regain right shape (to be compatible for calculations with y_pred)
     available_true_values = tf.repeat(tf.reshape(available_true_values, tf.concat([tf.shape(y_true)[:3], [1]], axis=0)),
-                                      3, axis=3)
+                                      tf.size(y_true[0,0,0,:]), axis=3)
     # stack the true calculated available true values and y_true flattened on top of each other
     stacked = tf.stack([K.flatten(available_true_values), K.flatten(y_true)])
     # y_true possible values : [-1, 0, 1] ; available_true_values possible values : [0, 1]
@@ -71,7 +76,6 @@ def ca_loss(y_true, y_pred, background_class_index):
     indices = tf.where(tf.math.equal(tf.math.reduce_prod(stacked, axis=0), -1))
     # collect all values of the candidate indices in y_pred
     candidates_y_pred = tf.gather(K.flatten(y_pred), indices)
-    # return the average value for all values in the batch
     return tf.math.divide_no_nan(tf.reduce_sum(candidates_y_pred),
                                  tf.cast(tf.size(candidates_y_pred), dtype=tf.float32))
 
@@ -80,9 +84,9 @@ def combined_loss(background_class_index, alpha):
     def loss(y_true, y_pred):
         ca = ca_loss(y_true, y_pred, background_class_index)
         dice = adaptive_dice_loss(y_true, y_pred)
+        if tf.math.is_nan(ca) or tf.math.is_nan(dice):
+            return 1.
         if ca == 0:
             return dice
-        else:
-            return tf.multiply(1 - alpha, dice) + tf.multiply(alpha, ca)
-
+        return tf.multiply(1 - alpha, dice) + tf.multiply(alpha, ca)
     return loss

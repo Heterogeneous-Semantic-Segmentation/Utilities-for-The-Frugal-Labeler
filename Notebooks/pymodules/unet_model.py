@@ -2,18 +2,38 @@ from tensorflow.keras.models import *
 from tensorflow.keras.layers import *
 from tensorflow.keras.optimizers import *
 import tensorflow.keras.backend as K
+import tensorflow as tf
 # in jupyter run:
 # %env SM_FRAMEWORK=tf.keras
 # before calling segmentation_models
 import segmentation_models as sm
 import numpy as np
 
-def dice_coef(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    coef = (2. * intersection + 1) / (K.sum(y_true_f) + K.sum(y_pred_f) + 1)
-    return coef
+def segmentation_sparse_iou(y_true, y_pred):
+    # intersection and union shapes are batch_size * n_classes (values = area in pixels)
+    axes = (1, 2)  # W,H axes of each image
+
+    y_true_orig = y_true
+    y_true = tf.where(tf.equal(y_true_orig,-1.),1.,y_true)
+    y_pred = tf.where(tf.equal(y_true_orig, -1.), 1., y_pred)
+
+    intersection = tf.math.reduce_sum(tf.abs(y_pred * y_true), axis=axes)
+    mask_sum = tf.math.reduce_sum(tf.abs(y_true), axis=axes) + tf.math.reduce_sum(tf.abs(y_pred), axis=axes)
+    union = mask_sum -intersection
+
+    smooth = .001
+    iou = (intersection + smooth) / (union + smooth)
+
+    # define mask to be 0 when no pixels are present in either y_true or y_pred, 1 otherwise
+    mask = tf.cast(tf.not_equal(union,0),tf.float32)
+
+    # Drop background class
+    iou = iou[:, :-1]
+    mask = mask[:,:-1]
+
+    # mean only over non-absent classes
+    class_count = tf.math.reduce_sum(mask,axis=0)
+    return tf.math.reduce_mean(tf.math.reduce_sum(iou * mask, axis=0)[class_count != 0] / (class_count[class_count != 0]))
 
 def unet(loss,pretrained_weights = None,input_size = (256,256,1),output_filters=1):
     inputs = Input(input_size)
@@ -67,11 +87,9 @@ def unet(loss,pretrained_weights = None,input_size = (256,256,1),output_filters=
         output = Activation('softmax')(output)
 
     model = Model(inputs = inputs, outputs = output)
-    model.compile(optimizer = Adam(), loss = loss , metrics = ['accuracy'])
+    model.compile(optimizer = Adam(), loss = loss ,  metrics = ['accuracy',segmentation_sparse_iou])
 
     if pretrained_weights:
         model.load_weights(pretrained_weights)
 
     return model
-
-
