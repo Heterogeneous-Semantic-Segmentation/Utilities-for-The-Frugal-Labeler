@@ -8,6 +8,8 @@ import skimage.transform as trans
 from heterogeneous_mask_iterator import HeterogeneousMaskIterator
 import segmentation_models as sm
 import tensorflow as tf
+import matplotlib.pyplot as plt
+import random
 
 
 def adjust_image(img):
@@ -17,13 +19,11 @@ def adjust_image(img):
 
 
 def train_generator(batch_size,
-                    train_path,
-                    train_path2,
-                    image_folder,
-                    image_folder2,
+                    train_paths,
+                    image_folders,
                     mask_folders,
-                    mask_folders2,
                     aug_dict,
+                    sample_weights,
                     heterogeneously_labeled_masks=None,
                     missing_labels_ratio=0,
                     image_color_mode="rgb",
@@ -39,68 +39,58 @@ def train_generator(batch_size,
     use the same seed for image_datagen and mask_datagen to ensure the transformation for image and mask is the same
     if you want to visualize the results of generator, set save_to_dir = "your path"
     '''
+    it = iter([train_paths, image_folders, mask_folders, heterogeneously_labeled_masks, sample_weights])
+    the_len = len(next(it))
+    if not all(len(l) == the_len for l in it):
+        raise ValueError(
+            'train_paths, image_folders, mask_folders, heterogeneously_labeled_masks and sample_distribution must all contain the same number of elements!')
+    num_of_data_sources = the_len
+    num_of_classes = []
+    total_num_of_classes = 0
+    for mask_folder in mask_folders:
+        num_of_classes.append(len(mask_folder))
+        total_num_of_classes+=len(mask_folder)
     image_datagen = ImageDataGenerator(**aug_dict)
     mask_datagen = ImageDataGenerator(**aug_dict)
-    image_generator = image_datagen.flow_from_directory(train_path,
-                                                        classes=[image_folder],
-                                                        class_mode=None,
-                                                        color_mode=image_color_mode,
-                                                        target_size=target_size,
-                                                        batch_size=batch_size,
-                                                        save_to_dir=save_to_dir,
-                                                        save_prefix=image_save_prefix,
-                                                        seed=seed)
-    heterogeneous_mask_generator = HeterogeneousMaskIterator(directory=train_path,
-                                                             image_data_generator=mask_datagen,
-                                                             masks=mask_folders,
-                                                             heterogeneously_labeled_masks=heterogeneously_labeled_masks,
-                                                             missing_labels_ratio=missing_labels_ratio,
-                                                             color_mode=mask_color_mode,
-                                                             target_size=target_size,
-                                                             batch_size=batch_size,
-                                                             save_to_dir=save_to_dir,
-                                                             save_prefix=mask_save_prefix,
-                                                             seed=seed,
-                                                             include_background=include_background)
-    image_generator2 = image_datagen.flow_from_directory(train_path2,
-                                                        classes=[image_folder2],
-                                                        class_mode=None,
-                                                        color_mode=image_color_mode,
-                                                        target_size=target_size,
-                                                        batch_size=batch_size,
-                                                        save_to_dir=save_to_dir,
-                                                        save_prefix=image_save_prefix,
-                                                        seed=seed)
-    heterogeneous_mask_generator2 = HeterogeneousMaskIterator(directory=train_path2,
-                                                              image_data_generator=mask_datagen,
-                                                              masks=mask_folders2,
-                                                              heterogeneously_labeled_masks=heterogeneously_labeled_masks,
-                                                              missing_labels_ratio=missing_labels_ratio,
-                                                              color_mode=mask_color_mode,
-                                                              target_size=target_size,
-                                                              batch_size=batch_size,
-                                                              save_to_dir=save_to_dir,
-                                                              save_prefix=mask_save_prefix,
-                                                              seed=seed,
-                                                              include_background=include_background)
-    train_generator = zip(image_generator, heterogeneous_mask_generator, image_generator2, heterogeneous_mask_generator2)
-
-    total_batches_seen = 0
-    for (img1, mask1,img2, mask2) in train_generator:
-        if seed is not None:
-            np.random.seed(seed + total_batches_seen)
-            total_batches_seen += 1
-        # [mask1,mask2,bg]
-        mask1 = np.insert(mask1,1,np.full(mask1.shape[:3],-1),axis=3)
-        mask2 = np.insert(mask2,0,np.full(mask2.shape[:3],-1),axis=3)
-        combined_masks = tf.concat((mask1,mask2),axis=0)
-        combined_imgs = tf.concat((img1,img2),axis=0)
-
-        indices = tf.range(start=0, limit=tf.shape(combined_masks)[0], dtype=tf.int32)
-        shuffled_indices = tf.random.shuffle(indices,seed=seed)
-
-        yield adjust_image(tf.gather(combined_imgs, shuffled_indices)[:mask1.shape[0]]), tf.gather(combined_masks, shuffled_indices)[:mask1.shape[0]]
-
+    train_generators = []
+    for i in range(len(train_paths)):
+        img_generator = image_datagen.flow_from_directory(train_paths[i],
+                                                          classes=[image_folders[i]],
+                                                          class_mode=None,
+                                                          color_mode=image_color_mode,
+                                                          target_size=target_size,
+                                                          batch_size=1,
+                                                          save_to_dir=save_to_dir,
+                                                          save_prefix=image_save_prefix,
+                                                          seed=seed)
+        mask_iterator = HeterogeneousMaskIterator(directory=train_paths[i],
+                                                  image_data_generator=mask_datagen,
+                                                  masks=mask_folders[i],
+                                                  heterogeneously_labeled_masks=heterogeneously_labeled_masks[i],
+                                                  missing_labels_ratio=missing_labels_ratio,
+                                                  color_mode=mask_color_mode,
+                                                  target_size=target_size,
+                                                  batch_size=1,
+                                                  save_to_dir=save_to_dir,
+                                                  save_prefix=mask_save_prefix,
+                                                  seed=seed,
+                                                  include_background=include_background)
+        train_generators.append(zip(img_generator, mask_iterator))
+    random.seed(seed)
+    while True:
+        batch_masks = np.full((batch_size, target_size[0], target_size[1], total_num_of_classes + include_background), -1)
+        batch_imgs = []
+        indices = random.choices(list(range(num_of_data_sources)), weights=sample_weights, k=batch_size)
+        for j in range(batch_size):
+            image, mask = next(train_generators[indices[j]])
+            batch_imgs.append(image[0])
+            if include_background:
+                batch_masks[j][:,:,total_num_of_classes] = mask[:,:,:,num_of_classes[indices[j]]]
+                mask = mask[:,:,:,:-1]
+            start_index = sum(num_of_classes[:indices[j]])
+            num_of_masks = num_of_classes[indices[j]]
+            batch_masks[j][:, :, start_index:start_index+num_of_masks] = mask
+        yield adjust_image(np.array(batch_imgs)), np.ndarray.astype(batch_masks,np.float32)
 
 def test_generator(batch_size,
                    test_path,
