@@ -3,6 +3,10 @@ data/
 # website: http://jupyter.org/
 
 
+# custom ignore
+Notebooks/pymodules/loss.py
+Notebooks/pymodules/test.py
+
 .DS_Store
 
 .idea/
