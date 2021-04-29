@@ -14,3 +14,6 @@ Implementation of the UNet model used in the paper.
 Module which provides training- and test-generators ready to be used with Keras.
 #### [pymodules/create_one_hot_encoded_map_from_mask.py](pymodules/create_one_hot_encoded_map_from_mask.py)
 Helper module which creates one hot encoded tensors from images (used for training).
+
+## Contact
+For questions and remarks feel free to contact [Mark Schutera](https://github.com/schutera) or [Luca Rettenberger](https://github.com/lrettenberger).
