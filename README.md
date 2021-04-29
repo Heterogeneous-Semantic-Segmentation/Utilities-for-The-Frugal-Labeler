@@ -1,5 +1,5 @@
 # Utilities-for-The-Frugal-Labeler
-This repository bundles the implementations to the methods used in [Methods for the frugal labeler: Multi-class semantic segmentation on heterogeneous labels](https://osf.io/uyk79/)
+This repository bundles the implementations to the methods used in [Methods for the frugal labeler: Multi-class semantic segmentation on heterogeneous labels](https://osf.io/uyk79/).
 
 ## Structure
 #### [Network_Training.ipynb](Network_Training.ipynb) 
