@@ -2,6 +2,7 @@ from PIL import Image
 from numpy import asarray
 import tensorflow as tf
 
+
 def uniq(lst):
     last = object()
     for item in lst:
@@ -9,6 +10,7 @@ def uniq(lst):
             continue
         yield item
         last = item
+
 
 def sort_and_deduplicate(l):
     return list(uniq(sorted(l, reverse=True)))
@@ -25,6 +27,7 @@ def get_color_smallest_distance(color,color_map):
             smallest_dist = abs(sum(color) - sum(color_map[i]))
             smallest_index = i
     return color_map[smallest_index]
+
 
 def get_one_hot_map(mask, color_map=None):
     '''

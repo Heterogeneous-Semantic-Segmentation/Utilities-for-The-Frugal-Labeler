@@ -1,10 +1,13 @@
 from tensorflow.python.keras import backend as K
 import tensorflow as tf
 
-# both loss functions expect unlabeled masks to be labeled as '-1' in all points of the mask.
+"""
+    Implementation of the loss functions mentioned in the paper. Both can be used individually
+     (@adaptive_dice_loss and/or @ca_loss) or as the combined loss @combined_loss.
 
+     Both loss functions expect unlabeled masks to be labeled as '-1' in all points of the mask.
+"""
 smooth = 1e-5
-
 
 def dice_loss_single_channel(y_true, y_pred):
     y_true_f = K.flatten(y_true)
@@ -23,8 +26,6 @@ def dice_loss_single_channel(y_true, y_pred):
         coef = (2. * intersection + smooth) / (K.sum(y_true_masked) + K.sum(y_pred_masked) + smooth)
         return 1 - coef
 
-
-wrong = K.variable([-1, -1, -1,-1,-1,-1,-1,-1])
 
 def dice_loss_single_sample(y_true, y_pred):
     if tf.reduce_any(tf.reduce_all(tf.math.equal(y_true[0, 0, :], tf.fill([tf.size(y_true[0, 0, :])], -1.)), axis=0)):

@@ -9,6 +9,11 @@ import tensorflow as tf
 import segmentation_models as sm
 import numpy as np
 
+    """
+        The UNet Model used in this work.
+    """
+
+
 def segmentation_sparse_iou(y_true, y_pred):
     # intersection and union shapes are batch_size * n_classes (values = area in pixels)
     axes = (1, 2)  # W,H axes of each image
