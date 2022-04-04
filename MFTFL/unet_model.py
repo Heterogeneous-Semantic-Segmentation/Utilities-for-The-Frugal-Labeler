@@ -9,9 +9,9 @@ import tensorflow as tf
 import segmentation_models as sm
 import numpy as np
 
-    """
-        The UNet Model used in this work.
-    """
+"""
+    The UNet Model used in this work.
+"""
 
 
 def segmentation_sparse_iou(y_true, y_pred):
