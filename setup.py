@@ -12,6 +12,7 @@ setup(
         "numpy>=1.21.2",
         "segmentation-models>=1.0.1",
         "matplotlib>=2.8.2",
-        "opencv-python>=4.5.5.62"
+        "opencv-python>=4.5.5.62",
+        "tensorflow>=2.8.0"
     ],
 )
