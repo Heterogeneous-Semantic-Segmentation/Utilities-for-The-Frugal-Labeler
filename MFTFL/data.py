@@ -1,16 +1,16 @@
 from __future__ import print_function
-from keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import os
 import glob
 import skimage.io as io
 import skimage.transform as trans
-from heterogeneous_mask_iterator import HeterogeneousMaskIterator
 import segmentation_models as sm
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
 
+from MFTFL.heterogeneous_mask_iterator import HeterogeneousMaskIterator
 
 def adjust_image(img):
     if np.max(img) > 1:

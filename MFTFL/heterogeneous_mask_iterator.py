@@ -6,9 +6,9 @@ from keras_preprocessing.image.utils import (array_to_img,
                                              load_img)
 import tensorflow as tf
 
-    """
-        The Hetereogenous Mask Iterator, ready to be used with Keras. See @Network_Training.ipynb for usage.
-    """
+"""
+    The Hetereogenous Mask Iterator, ready to be used with Keras. See @Network_Training.ipynb for usage.
+"""
 
 
 
