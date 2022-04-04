@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="Utilities for the frugal labeler",
-    version="1.0.0",
+    version="1.1.0",
     url="https://github.com/Heterogeneous-Semantic-Segmentation/Utilities-for-The-Frugal-Labeler",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
